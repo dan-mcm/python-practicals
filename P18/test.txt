@@ -1,0 +1,6 @@
+Number of < in file is: 115
+Number of > in file is: 115
+Number of newlines in file is: 96
+Number of <!-- in file is: 3
+Number of  --> in file is: 3
+Number of  lowercase e in file is: 100

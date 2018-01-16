@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel = "stylesheet"
+          type = "text/css"
+          href = "main.css" />
+    <title>Dan's Weather App</title>
+
+<!-- note script section placed in head is primarily sourced from sample git code (https://github.com/google/maps-for-work-samples/blob/master/samples/maps/OpenWeatherMapLayer/index.html) - I had setup my own openweathermap api account and inserted the api code where necessary to attempt to get live data in to map on website - this provides a live feed of the current weather. I also inserted relevant coordinates from JSON file to center on Dublin as well as an improved zoom of 10.
+
+I have also left here alternate code I had originally setup to show basic map and bouncing pin on Dublin: 
+
+function myMap() {
+  var mapCanvas = document.getElementById("map");
+  var myCenter = new google.maps.LatLng(53.355122,-6.24922);
+  var mapOptions = {center: myCenter, zoom: 10};
+  var map = new google.maps.Map(mapCanvas,mapOptions);
+    
+  var marker = new google.maps.Marker({
+    position: myCenter,
+    animation: google.maps.Animation.BOUNCE
+  });
+  marker.setMap(map);
+}
+-->
+    
+<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js">
+</script>
+    
+<script>
+  var map;
+  var geoJSON;
+  var request;
+  var gettingData = false;
+  var openWeatherMapKey = "bdd23f5a5fc015d3e2b6b8e578d80289"
+  
+  function initialize() {
+    var mapOptions = {
+      zoom: 10,
+      center: new google.maps.LatLng(53.355122,-6.24922) //taken from Daily JSON lat + lng values
+    };
+      
+    map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions);
+      
+    // Add interaction listeners to make weather requests
+    google.maps.event.addListener(map, "idle", checkIfDataRequested);
+    
+    // Sets up and populates the info window with details
+    map.data.addListener("click", function(event) {
+      infowindow.setContent(
+       "<img src=" + event.feature.getProperty("icon") + ">"
+       + "<br /><strong>" + event.feature.getProperty("city") + "</strong>"
+       + "<br />" + event.feature.getProperty("temperature") + "&deg;C"
+       + "<br />" + event.feature.getProperty("weather")
+       );
+      infowindow.setOptions({
+          position:{
+            lat: event.latLng.lat(),
+            lng: event.latLng.lng()
+          },
+          pixelOffset: {
+            width: 0,
+            height: -15
+          }
+        });
+      infowindow.open(map);
+    });
+  }
+  var checkIfDataRequested = function() {
+    // Stop extra requests being sent
+    while (gettingData === true) {
+      request.abort();
+      gettingData = false;
+    }
+    getCoords();
+  };
+  // Get the coordinates from the Map bounds
+  var getCoords = function() {
+    var bounds = map.getBounds();
+    var NE = bounds.getNorthEast();
+    var SW = bounds.getSouthWest();
+    getWeather(NE.lat(), NE.lng(), SW.lat(), SW.lng());
+  };
+    
+  // Make the weather request
+  var getWeather = function(northLat, eastLng, southLat, westLng) {
+    gettingData = true;
+    var requestString = "http://api.openweathermap.org/data/2.5/box/city?bbox="
+                        + westLng + "," + northLat + "," //left top
+                        + eastLng + "," + southLat + "," //right bottom
+                        + map.getZoom()
+                        + "&cluster=yes&format=json"
+                        + "&APPID=" + "bdd23f5a5fc015d3e2b6b8e578d80289";
+    request = new XMLHttpRequest();
+    request.onload = proccessResults;
+    request.open("get", requestString, true);
+    request.send();
+  };
+    
+  // Take the JSON results and proccess them
+  var proccessResults = function() {
+    console.log(this);
+    var results = JSON.parse(this.responseText);
+    if (results.list.length > 0) {
+        resetData();
+        for (var i = 0; i < results.list.length; i++) {
+          geoJSON.features.push(jsonToGeoJson(results.list[i]));
+        }
+        drawIcons(geoJSON);
+    }
+  };
+    
+  var infowindow = new google.maps.InfoWindow();
+  // For each result that comes back, convert the data to geoJSON
+  var jsonToGeoJson = function (weatherItem) {
+    var feature = {
+      type: "Feature",
+      properties: {
+        city: weatherItem.name,
+        weather: weatherItem.weather[0].main,
+        temperature: weatherItem.main.temp,
+        min: weatherItem.main.temp_min,
+        max: weatherItem.main.temp_max,
+        humidity: weatherItem.main.humidity,
+        pressure: weatherItem.main.pressure,
+        windSpeed: weatherItem.wind.speed,
+        windDegrees: weatherItem.wind.deg,
+        windGust: weatherItem.wind.gust,
+        icon: "http://openweathermap.org/img/w/"
+              + weatherItem.weather[0].icon  + ".png",
+        coordinates: [weatherItem.coord.lon, weatherItem.coord.lat]
+      },
+      geometry: {
+        type: "Point",
+        coordinates: [weatherItem.coord.lon, weatherItem.coord.lat]
+      }
+    };
+    // Set the custom marker icon
+    map.data.setStyle(function(feature) {
+      return {
+        icon: {
+          url: feature.getProperty("icon"),
+          anchor: new google.maps.Point(25, 25)
+        }
+      };
+    });
+    // returns object
+    return feature;
+  };
+  // Add the markers to the map
+  var drawIcons = function (weather) {
+     map.data.addGeoJson(geoJSON);
+     // Set the flag to finished
+     gettingData = false;
+  };
+  // Clear data layer and geoJSON
+  var resetData = function () {
+    geoJSON = {
+      type: "FeatureCollection",
+      features: []
+    };
+    map.data.forEach(function(feature) {
+      map.data.remove(feature);
+    });
+  };
+  google.maps.event.addDomListener(window, "load", initialize);
+</script>
+</head>
+    
+    
+<body>
+    
+<header>   
+<h1>Weather!</h1>
+</header>
+    
+<div id=summary> 
+<p>This website is desiged to allow users to see the weather forecast across dublin for a period of 1-5 days.</p>
+<p>The map below shows a live weather forecast from the Open Weather Map API!</p>
+</div>
+
+<!-- div for the map to be place in -->
+<div id="map-canvas"></div>
+
+<br />
+    
+<!-- div containing form customisation elements - radiobuttons & checkboxes -->
+<div id=form>
+    
+    <p>Select number of days forecast you wish to view:</p>
+    
+    <form>
+    <input type="radio" name=day onclick="d1show()">1
+    <input type="radio" name=day onclick="d2show()">2
+    <input type="radio" name=day onclick="d3show()">3
+    <input type="radio" name=day onclick="d4show()">4
+    <input type="radio" name=day onclick="d5show()">5
+    </form>
+    
+    <p>Select any additional items you want displayed:</p>
+    
+    <input type="checkbox" name="cb1" onclick="pshow()">Pressure
+    <input type="checkbox" name="cb2" onclick="hshow()">Humidity
+    <input type="checkbox" name="cb3" onclick="wshow()">Wind Speed
+
+    <br />
+    <br />
+    
+    <button type="button" onclick="show()">Submit!</button>
+
+    
+</div>
+
+<!-- div that shows all key day elements -->
+<div id=overallView>
+    
+<!-- comment details for day1 div apply the same for day2-day5 -->
+    
+<div id="day1">
+    <h2>Day 1 Forecast:</h2>
+    <div id="div11"> <!-- display weather icon (if submit clicked) -->
+    </div>
+    <div id="div1d"> <!-- display description of weather (if submit clicked) -->
+    </div>
+    <div id="div12"> <!-- display min & max weather temp (if submit clikced) -->
+    </div>
+    <div class="pressure" id="div13"> <!-- display pressure (if checkbox ticked) -->
+    </div>
+    <div class="humid" id="div14"> <!-- display humidity (if checkbox ticked) -->
+    </div>
+    <div class="speed" id="div15"> <!-- display wind speed (if checkedbox ticked) -->
+    </div>
+    <div>
+    <button id="b1" type="button" onclick="showExtra1()">Hourly...</button> 
+    </div>
+    <div class="extra" id=div1e> <!-- display extra Detailed.json details (if 'Hourly...' pressed) -->
+    </div>
+</div>
+    
+<div id="day2">
+    <h2>Day 2 Forecast:</h2>
+    <div id="div21">
+    </div>
+    <div id="div2d">
+    </div>
+    <div id="div22">
+    </div>
+    <div class="pressure" id="div23">
+    </div>
+    <div class="humid" id="div24">
+    </div>
+    <div class="speed" id="div25">
+    </div>
+    <div>
+    <button id="b2" type="button" onclick="showExtra2()">Hourly...</button>
+    </div>
+    <div class="extra" id=div2e>
+    </div>
+</div>
+    
+<div id="day3">
+    <h2>Day 3 Forecast:</h2>
+    <div id="div31">
+    </div>
+    <div id="div3d">
+    </div>
+    <div id="div32">
+    </div>
+    <div class="pressure" id="div33">
+    </div>
+    <div class="humid" id="div34">
+    </div>
+    <div class="speed" id="div35">
+    </div>
+    <div>
+    <button id="b3" type="button" onclick="showExtra3()">Hourly...</button>
+    </div>
+    <div class="extra" id=div3e>
+    </div>
+</div>
+    
+<div id="day4">
+    <h2>Day 4 Forecast:</h2>
+    <div id="div41">
+    </div>
+    <div id="div4d">
+    </div>
+    <div id="div42">
+    </div>
+    <div class="pressure" id="div43">
+    </div>
+    <div class="humid" id="div44">
+    </div>
+    <div class="speed" id="div45">
+    </div>
+    <div>
+    <button id="b4" type="button" onclick="showExtra4()">Hourly...</button>
+    </div>
+    <div class="extra" id=div4e>
+    </div>
+</div>
+    
+<div id="day5">
+    <h2>Day 5 Forecast:</h2>
+    <div id="div51">
+    </div>
+    <div id="div5d">
+    </div>
+    <div id="div52">
+    </div>
+    <div class="pressure" id="div53">
+    </div>
+    <div class="humid" id="div54">
+    </div>
+    <div class="speed" id="div55">
+    </div>
+    <div>
+    <button id="b5" type="button" onclick="showExtra5()">Hourly...</button>
+    </div>
+    <div class="extra" id=div5e>
+    </div>
+</div>
+
+</div>
+
+<script>
+
+//parses first JSON data through functions
+var xmlhttp = new XMLHttpRequest();
+var url = "Daily.json";
+
+xmlhttp.onreadystatechange = function() {
+    if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+        var myArr = JSON.parse(xmlhttp.responseText);
+        displayTemp(myArr)
+        displayDescription(myArr)
+        displayPressure(myArr)
+        displayHumidity(myArr)
+        displayWind(myArr)
+        displayImage(myArr)
+    }
+}
+
+xmlhttp.open("GET", url, true);
+xmlhttp.send();
+
+//converts JSON data for weather icons into html images and outputs onto divs
+function displayImage(arr) {
+    var out1 = "";
+    var out2 = "";
+    var out3 = "";
+    var out4 = "";
+    var out5 = "";
+    
+    var code1 = arr.list[0].weather[0].icon;
+    var code2 = arr.list[1].weather[0].icon;
+    var code3 = arr.list[2].weather[0].icon;
+    var code4 = arr.list[3].weather[0].icon;
+    var code5 = arr.list[4].weather[0].icon;
+    
+    var alt1 = arr.list[0].weather[0].main;
+    var alt2 = arr.list[1].weather[0].main;
+    var alt3 = arr.list[2].weather[0].main;
+    var alt4 = arr.list[3].weather[0].main;
+    var alt5 = arr.list[4].weather[0].main;
+    
+    out1 += "<img alt=" + alt1 + " src='" + "http://openweathermap.org/img/w/" + code1 + ".png" + "'/>"
+    out2 += "<img alt=" + alt2 + " src='" + "http://openweathermap.org/img/w/" + code2 + ".png" + "'/>"
+    out3 += "<img alt=" + alt3 + " src='" + "http://openweathermap.org/img/w/" + code3 + ".png" + "'/>"
+    out4 += "<img alt=" + alt4 + " src='" + "http://openweathermap.org/img/w/" + code4 + ".png" + "'/>"
+    out5 += "</h2><img alt=" + alt5 + " src='" + "http://openweathermap.org/img/w/" + code5 + ".png" + "'/>"
+    
+    document.getElementById("div11").innerHTML = out1;
+    document.getElementById("div21").innerHTML = out2;
+    document.getElementById("div31").innerHTML = out3;
+    document.getElementById("div41").innerHTML = out4;
+    document.getElementById("div51").innerHTML = out5;
+    
+}
+
+//outputs JSON data for weather descriptions onto divs
+function displayDescription(arr){
+    var out1 = "";
+    var out2 = "";
+    var out3 = "";
+    var out4 = "";
+    var out5 = "";
+    
+    out1 += "<p>Forecast: <br />" + arr.list[0].weather[0].description + "</p>"
+    out2 += "<p>Forecast: <br />" + arr.list[1].weather[0].description + "</p>"
+    out3 += "<p>Forecast: <br />" + arr.list[2].weather[0].description + "</p>"
+    out4 += "<p>Forecast: <br />" + arr.list[3].weather[0].description + "</p>"
+    out5 += "<p>Forecast: <br />" + arr.list[4].weather[0].description + "</p>"
+    
+    document.getElementById("div1d").innerHTML = out1;
+    document.getElementById("div2d").innerHTML = out2;
+    document.getElementById("div3d").innerHTML = out3;
+    document.getElementById("div4d").innerHTML = out4;
+    document.getElementById("div5d").innerHTML = out5;
+}
+
+//outputs JSON data for weather min & max temperatures onto divs
+function displayTemp(arr) {
+    var out1 = "";
+    var out2 = "";
+    var out3 = "";
+    var out4 = "";
+    var out5 = "";
+    
+    //note: codes for UTF-8 unicode symbols obtained from w3schools
+    out1 += "<p>Min Temp: <br />" + arr.list[0].temp.min + "&#8451;</p>" 
+    out1 += "<p>Max Temp: <br />" + arr.list[0].temp.max + "&#8451;</p>"
+    
+    out2 += "<p>Min Temp: <br />" + arr.list[1].temp.min + "&#8451;</p>"
+    out2 += "<p>Max Temp: <br />" + arr.list[1].temp.max + "&#8451;</p>"
+    
+    out3 += "<p>Min Temp: <br />" + arr.list[2].temp.min + "&#8451;</p>"
+    out3 += "<p>Max Temp: <br />" + arr.list[2].temp.max + "&#8451;</p>"
+    
+    out4 += "<p>Min Temp: <br />" + arr.list[3].temp.min + "&#8451;</p>"
+    out4 += "<p>Max Temp: <br />" + arr.list[3].temp.max + "&#8451;</p>"
+    
+    out5 += "<p>Min Temp: <br />" + arr.list[4].temp.min + "&#8451;</p>"
+    out5 += "<p>Max Temp: <br />" + arr.list[4].temp.max + "&#8451;</p>"
+    
+    document.getElementById("div12").innerHTML = out1;
+    document.getElementById("div22").innerHTML = out2;
+    document.getElementById("div32").innerHTML = out3;
+    document.getElementById("div42").innerHTML = out4;
+    document.getElementById("div52").innerHTML = out5;
+}
+
+//outputs JSON data for pressure onto divs
+function displayPressure(arr) {
+    var out1 = "";
+    var out2 = "";
+    var out3 = "";
+    var out4 = "";
+    var out5 = "";
+    
+    out1 += "<p>Pressure (Sea Level): <br />" + arr.list[0].pressure + " hPa</p>"
+    out2 += "<p>Pressure (Sea Level): <br />" + arr.list[1].pressure + " hPa</p>"
+    out3 += "<p>Pressure (Sea Level): <br />" + arr.list[2].pressure + " hPa</p>"
+    out4 += "<p>Pressure (Sea Level): <br />" + arr.list[3].pressure + " hPa</p>"
+    out5 += "<p>Pressure (Sea Level): <br />" + arr.list[4].pressure + " hPa</p>"
+    
+    document.getElementById("div13").innerHTML = out1;
+    document.getElementById("div23").innerHTML = out2;
+    document.getElementById("div33").innerHTML = out3;
+    document.getElementById("div43").innerHTML = out4;
+    document.getElementById("div53").innerHTML = out5;  
+    
+}
+
+//outputs JSON data for humidity onto divs
+function displayHumidity(arr) {
+    var out1 = "";
+    var out2 = "";
+    var out3 = "";
+    var out4 = "";
+    var out5 = "";
+    
+    out1 += "<p>Humidity: <br />" + arr.list[0].humidity + "%</p>"
+    out2 += "<p>Humidity: <br />" + arr.list[1].humidity + "%</p>"
+    out3 += "<p>Humidity: <br />" + arr.list[2].humidity + "%</p>"
+    out4 += "<p>Humidity: <br />" + arr.list[3].humidity + "%</p>"
+    out5 += "<p>Humidity: <br />" + arr.list[4].humidity + "%</p>"
+    
+    document.getElementById("div14").innerHTML = out1;
+    document.getElementById("div24").innerHTML = out2;
+    document.getElementById("div34").innerHTML = out3;
+    document.getElementById("div44").innerHTML = out4;
+    document.getElementById("div54").innerHTML = out5;
+}
+
+//outputs JSON data for wind speed onto divs
+function displayWind(arr) {
+    var out1 = "";
+    var out2 = "";
+    var out3 = "";
+    var out4 = "";
+    var out5 = "";
+    
+    out1 += "<p>Wind Speed: <br />" + arr.list[0].speed + " miles/hour</p>"
+    out2 += "<p>Wind Speed: <br />" + arr.list[1].speed + " miles/hour</p>"
+    out3 += "<p>Wind Speed: <br />" + arr.list[2].speed + " miles/hour</p>"
+    out4 += "<p>Wind Speed: <br />" + arr.list[3].speed + " miles/hour</p>"
+    out5 += "<p>Wind Speed: <br />" + arr.list[4].speed + " miles/hour</p>"
+    
+    document.getElementById("div15").innerHTML = out1;
+    document.getElementById("div25").innerHTML = out2;
+    document.getElementById("div35").innerHTML = out3;
+    document.getElementById("div45").innerHTML = out4;
+    document.getElementById("div55").innerHTML = out5;
+    
+}
+
+//function uses submit button to toggle overall view divs between display block and display none
+function show() {
+    if(document.getElementById("overallView").style.display!=="block"){
+        document.getElementById("overallView").style.display="block";
+    } else {
+        document.getElementById("overallView").style.display="none";
+    }
+}   
+
+//function uses checkbox to toggle pressure divs between display block and display none
+function pshow() {
+    var x = document.getElementsByClassName("pressure");
+        
+    for (var i=0; i < x.length; i++) 
+    {    
+        if(x[i].style.display!=="block"){
+        x[i].style.display="block";
+        } else {
+        x[i].style.display="none";
+    }
+    }
+    
+}
+
+//function uses checkbox to toggle humidity divs between display block and display none
+function hshow() {
+    var x = document.getElementsByClassName("humid");
+        
+    for (var i=0; i < x.length; i++) 
+    {    
+        if(x[i].style.display!=="block"){
+        x[i].style.display="block";
+        } else {
+        x[i].style.display="none";
+    }
+    }
+}
+
+//function uses checkbox to toggle wind speed divs between display block and display none
+function wshow(arr) {
+    var x = document.getElementsByClassName("speed");
+        
+    for (var i=0; i < x.length; i++) 
+    {    
+        if(x[i].style.display!=="block"){
+        x[i].style.display="block";
+        } else {
+        x[i].style.display="none";
+    }
+    }
+}
+    
+    //function displays day 1 div when radio button 1 and submit is pressed - it hides all other divs
+    function d1show() {
+    
+        document.getElementById("day1").style.display="block";
+        document.getElementById("day2").style.display="none";
+        document.getElementById("day3").style.display="none";
+        document.getElementById("day4").style.display="none";
+        document.getElementById("day5").style.display="none";
+        
+        //This hides results until user clicks Submit
+        document.getElementById("overallView").style.display="none";
+        
+    } 
+    
+    //function displays day 2 div when radio button 2 and submit is pressed - it hides all other divs
+    function d2show() {
+    
+        document.getElementById("day2").style.display="block";
+        document.getElementById("day1").style.display="block";
+        document.getElementById("day3").style.display="none";
+        document.getElementById("day4").style.display="none";
+        document.getElementById("day5").style.display="none";
+
+        //This hides results until user clicks Submit
+        document.getElementById("overallView").style.display="none";
+
+}
+    //function displays day 3 div when radio button 3 and submit is pressed - it hides all other divs
+    function d3show() {
+    
+        document.getElementById("day3").style.display="block";
+        document.getElementById("day2").style.display="block";
+        document.getElementById("day1").style.display="block";
+        document.getElementById("day4").style.display="none";
+        document.getElementById("day5").style.display="none";
+
+        //This hides results until user clicks Submit
+        document.getElementById("overallView").style.display="none";
+}
+    
+    //function displays day 4 div when radio button 4 and submit is pressed - it hides all other divs
+    function d4show() {
+    
+        document.getElementById("day4").style.display="block";
+        document.getElementById("day1").style.display="block";
+        document.getElementById("day2").style.display="block";
+        document.getElementById("day3").style.display="block";
+        document.getElementById("day5").style.display="none";
+
+        //This hides results until user clicks Submit
+        document.getElementById('overallView').style.display='none';
+}
+    //function displays day 5 div when radio button 5 and submit is pressed - it hides all other divs
+    function d5show() {
+    
+        document.getElementById("day5").style.display="block";
+        document.getElementById("day1").style.display="block";
+        document.getElementById("day2").style.display="block";
+        document.getElementById("day3").style.display="block";
+        document.getElementById("day4").style.display="block";
+
+        //This hides results until user clicks Submit
+        document.getElementById("overallView").style.display="none";
+}
+
+    //parses second JSON data through functions
+    var xmlhttp2 = new XMLHttpRequest();
+    var url2 = "Detailed.json";
+
+    xmlhttp2.onreadystatechange = function() {
+        if (xmlhttp2.readyState == 4 && xmlhttp2.status == 200) {
+            var myArr2 = JSON.parse(xmlhttp2.responseText);
+            displayExtra1(myArr2)
+            displayExtra2(myArr2)
+            displayExtra3(myArr2)
+            displayExtra4(myArr2)
+            displayExtra5(myArr2)
+        }
+    }
+
+    xmlhttp2.open("GET", url2, true);
+    xmlhttp2.send();
+    
+    //outputs JSON data for image,date+time,logo,forecast,temperature,sea level pressure, ground level pressure, humidity, wind speed, wind degrees, cloudiness - outputs to div1e
+    
+    function displayExtra1(arr2) {
+    var out1 = "";
+        
+    for (var i=0; i < 5; i++) 
+    {   
+        out1 += "<p><img src='./linebreak.png' class=linebreak> " + "</p>"
+        out1 += "<h3>" + arr2.list[i].dt_txt + "</h3>"
+        out1 += "<p><img alt=" + arr2.list[i].weather[0].main + " src='" + "http://openweathermap.org/img/w/" + arr2.list[i].weather[0].icon + ".png" + "'/>" + "</p>"
+        out1 += "<p>Forecast: </br>" + arr2.list[i].weather[0].description + "</p>"
+        out1 += "<p>Temperature: <br />" + arr2.list[i].main.temp + "&#8451;</p>"
+        out1 += "<p>Sea Level Pressure: <br />" + arr2.list[i].main.sea_level + " hPa</p>"
+        out1 += "<p>Ground Level Pressure: <br />" + arr2.list[i].main.grnd_level + " hPa</p>"
+        out1 += "<p>Humidity: <br />" + arr2.list[i].main.humidity + "%</p>"
+        out1 += "<p>Wind Speed: <br />" + arr2.list[i].wind.speed + " miles/hour</p>"
+        out1 += "<p>Wind Degrees: <br />" + arr2.list[i].wind.deg + "&deg;</p>"
+        out1 += "<p>Cloudiness: <br />" + arr2.list[i].clouds.all + "%</p>"
+        
+        out1 += "<p>Rain volume in last 3 hours: <br />" + arr2.list[i].rain['3h'] + " mm&sup3;</p>" 
+
+    
+        document.getElementById("div1e").innerHTML = out1;
+    }
+    
+    
+}
+    //function used to toggle div1e visiblitiy on button click
+    function showExtra1() {
+        
+   if(document.getElementById("div1e").style.display!=="block"){
+        document.getElementById("div1e").style.display="block";
+        
+    } else {
+        document.getElementById("div1e").style.display="none";
+    }
+        
+}
+    //outputs JSON data for image,date+time,logo,forecast,temperature,sea level pressure, ground level pressure, humidity, wind speed, wind degrees, cloudiness - outputs to div2e
+    
+    function displayExtra2(arr2) {
+
+    var out2 = "";
+        
+    for (var i=5; i < 13; i++) 
+    {
+        out2 += "<p><img src='./linebreak.png' class=linebreak> " + "</p>"
+        out2 += "<h3>" + arr2.list[i].dt_txt + "</h3>"
+        out2 += "<p><img alt=" + arr2.list[i].weather[0].main + " src='" + "http://openweathermap.org/img/w/" + arr2.list[i].weather[0].icon + ".png" + "'/>" + "</p>"
+        out2 += "<p>Forecast: </br>" + arr2.list[i].weather[0].description + "</p>"
+        out2 += "<p>Temperature: <br />" + arr2.list[i].main.temp + "&#8451;</p>"
+        out2 += "<p>Sea Level Pressure: <br />" + arr2.list[i].main.sea_level + " hPa</p>"
+        out2 += "<p>Ground Level Pressure: <br />" + arr2.list[i].main.grnd_level + " hPa</p>"
+        out2 += "<p>Humidity: <br />" + arr2.list[i].main.humidity + "%</p>"
+        out2 += "<p>Wind Speed: <br />" + arr2.list[i].wind.speed + " miles/hour</p>"
+        out2 += "<p>Wind Degrees: <br />" + arr2.list[i].wind.deg + "&deg;</p>"
+        
+        out2 += "<p>Cloudiness: <br />" + arr2.list[i].clouds.all + "%</p>"
+        out2 += "<p>Rain volume in last 3 hours: <br />" + arr2.list[i].rain['3h'] + " mm&sup3;</p>"
+
+    document.getElementById("div2e").innerHTML = out2;    
+    }
+}
+    
+    //function used to toggle div2e visiblitiy on button click
+    function showExtra2() {
+    
+    if(document.getElementById("div2e").style.display!=="block"){
+        document.getElementById("div2e").style.display="block";
+        
+    } else {
+        document.getElementById("div2e").style.display="none";
+    }
+    
+}
+    
+    //outputs JSON data for image,date+time,logo,forecast,temperature,sea level pressure, ground level pressure, humidity, wind speed, wind degrees, cloudiness - outputs to div3e
+    
+    function displayExtra3(arr2) {
+
+    var out3 = "";
+        
+    for (var i=13; i < 21; i++) 
+    {
+        out3 += "<p><img src='./linebreak.png' class=linebreak> " + "</p>"
+        out3 += "<h3>" + arr2.list[i].dt_txt + "</h3>"
+        out3 += "<p><img alt=" + arr2.list[i].weather[0].main + " src='" + "http://openweathermap.org/img/w/" + arr2.list[i].weather[0].icon + ".png" + "'/>" + "</p>"
+        out3 += "<p>Forecast: </br>" + arr2.list[i].weather[0].description + "</p>"
+        out3 += "<p>Temperature: <br />" + arr2.list[i].main.temp + "&#8451;</p>"
+        out3 += "<p>Sea Level Pressure: <br />" + arr2.list[i].main.sea_level + " hPa</p>"
+        out3 += "<p>Ground Level Pressure: <br />" + arr2.list[i].main.grnd_level + " hPa</p>"
+        out3 += "<p>Humidity: <br />" + arr2.list[i].main.humidity + "%</p>"
+        out3 += "<p>Wind Speed: <br />" + arr2.list[i].wind.speed + " miles/hour</p>"
+        out3 += "<p>Wind Degrees: <br />" + arr2.list[i].wind.deg + "&deg;</p>"
+        
+        out3 += "<p>Cloudiness: <br />" + arr2.list[i].clouds.all + "%</p>"
+        out3 += "<p>Rain volume in last 3 hours: <br />" + arr2.list[i].rain['3h'] + " mm&sup3;</p>"
+
+    document.getElementById("div3e").innerHTML = out3;    
+    }
+}
+    
+    //function used to toggle div3e visiblitiy on button click
+    function showExtra3() {
+        
+    if(document.getElementById("div3e").style.display!=="block"){
+        document.getElementById("div3e").style.display="block";
+        
+    } else {
+        document.getElementById("div3e").style.display="none";
+    }
+}
+    
+    //outputs JSON data for image,date+time,logo,forecast,temperature,sea level pressure, ground level pressure, humidity, wind speed, wind degrees, cloudiness - outputs to div4e
+    function displayExtra4(arr2) {
+
+    var out4 = "";
+        
+    for (var i=21; i < 29; i++) 
+    {
+        out4 += "<p><img src='./linebreak.png' class=linebreak> " + "</p>"
+        out4 += "<h3>" + arr2.list[i].dt_txt + "</h3>"
+        out4 += "<p><img alt=" + arr2.list[i].weather[0].main + " src='" + "http://openweathermap.org/img/w/" + arr2.list[i].weather[0].icon + ".png" + "'/>" + "</p>"
+        out4 += "<p>Forecast: </br>" + arr2.list[i].weather[0].description + "</p>"
+        out4 += "<p>Temperature: <br />" + arr2.list[i].main.temp + "&#8451;</p>"
+        out4 += "<p>Sea Level Pressure: <br />" + arr2.list[i].main.sea_level + " hPa</p>"
+        out4 += "<p>Ground Level Pressure: <br />" + arr2.list[i].main.grnd_level + " hPa</p>"
+        out4 += "<p>Humidity: <br />" + arr2.list[i].main.humidity + "%</p>"
+        out4 += "<p>Wind Speed: <br />" + arr2.list[i].wind.speed + " miles/hour</p>"
+        out4 += "<p>Wind Degrees: <br />" + arr2.list[i].wind.deg + "&deg;</p>"
+        
+        out4 += "<p>Cloudiness: <br />" + arr2.list[i].clouds.all + "%</p>"
+        out4 += "<p>Rain volume in last 3 hours: <br />" + arr2.list[i].rain['3h'] + " mm&sup3;</p>"
+
+    document.getElementById("div4e").innerHTML = out4;    
+    }
+}
+    
+    //function used to toggle div4e visiblitiy on button click
+    function showExtra4() {
+        
+        if(document.getElementById("div4e").style.display!=="block"){
+        document.getElementById("div4e").style.display="block";
+        
+    } else {
+        document.getElementById("div4e").style.display="none";
+    }
+}
+    
+    //outputs JSON data for image,date+time,logo,forecast,temperature,sea level pressure, ground level pressure, humidity, wind speed, wind degrees, cloudiness - outputs to div5e
+    
+    function displayExtra5(arr2) {
+
+    var out5 = "";
+        
+    for (var i=29; i < 37; i++) 
+    {
+        out5 += "<p><img src='./linebreak.png' class=linebreak> " + "</p>"
+        out5 += "<h3>" + arr2.list[i].dt_txt + "</h3>"
+        out5 += "<p><img alt=" + arr2.list[i].weather[0].main + " src='" + "http://openweathermap.org/img/w/" + arr2.list[i].weather[0].icon + ".png" + "'/>" + "</p>"
+        out5 += "<p>Forecast: </br>" + arr2.list[i].weather[0].description + "</p>"
+        out5 += "<p>Temperature: <br />" + arr2.list[i].main.temp + "&#8451;</p>"
+        out5 += "<p>Sea Level Pressure: <br />" + arr2.list[i].main.sea_level + " hPa</p>"
+        out5 += "<p>Ground Level Pressure: <br />" + arr2.list[i].main.grnd_level + " hPa</p>"
+        out5 += "<p>Humidity: <br />" + arr2.list[i].main.humidity + "%</p>"
+        out5 += "<p>Wind Speed: <br />" + arr2.list[i].wind.speed + " miles/hour</p>"
+        out5 += "<p>Wind Degrees: <br />" + arr2.list[i].wind.deg + "&deg;</p>"
+        out5 += "<p>Cloudiness: <br />" + arr2.list[i].clouds.all + "%</p>"
+        out5 += "<p>Rain volume in last 3 hours: <br />" + arr2.list[i].rain['3h'] + " mm&sup3;</p>"
+
+    document.getElementById("div5e").innerHTML = out5;    
+    }  
+}
+    
+    //function used to toggle div5e visiblitiy on button click
+    function showExtra5() {
+        
+        if(document.getElementById("div5e").style.display!=="block"){
+        document.getElementById("div5e").style.display="block";
+        
+    } else {
+        document.getElementById("div5e").style.display="none";
+    }
+}
+    
+</script>
+
+</body>
+</html>
